@@ -1,0 +1,51 @@
+#cloud-config
+
+package_update: true
+packages:
+  - curl
+  - git
+
+runcmd:
+  - |
+    # Install Docker
+    curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+    sh /tmp/get-docker.sh
+    usermod -aG docker ubuntu
+    systemctl enable docker
+    systemctl start docker
+    
+    # Install Docker Compose
+    curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+    chmod +x /usr/local/bin/docker-compose
+    
+    # Wait for Docker
+    sleep 15
+    
+    # Setup as ubuntu user
+    sudo -u ubuntu bash -c '
+    cd /home/ubuntu
+    
+    # Clone repo
+    git clone https://github.com/AkashBhat14/docker-ec2-webapp.git
+    cd docker-ec2-webapp
+    
+    # Get public IP
+    PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
+    
+    # Create env file
+    echo "GEMINI_API_KEY=your_actual_gemini_api_key_here" > .env
+    echo "S3_BUCKET_NAME=akash-chat-app-bucket-2025" >> .env
+    echo "NEXT_PUBLIC_API_URL=http://$PUBLIC_IP:5000" >> .env
+    
+    # Start containers
+    docker-compose up --build -d
+    
+    # Create status
+    echo "Setup complete at $(date)" > /home/ubuntu/SETUP_COMPLETE.txt
+    echo "Frontend: http://$PUBLIC_IP:3000" >> /home/ubuntu/SETUP_COMPLETE.txt
+    echo "Backend: http://$PUBLIC_IP:5000" >> /home/ubuntu/SETUP_COMPLETE.txt
+    '
+
+final_message: |
+  Setup should be complete!
+  Check: cat /home/ubuntu/SETUP_COMPLETE.txt 
