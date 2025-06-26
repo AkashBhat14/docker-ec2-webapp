@@ -228,6 +228,83 @@ docker-ec2-webapp/
 ```
 
 
+## 🔐 AWS IAM Role Setup for S3 Chat History
+
+### Step 1: Create IAM Role
+
+1. **AWS Console → IAM → Roles → Create Role**
+2. **Trusted entity**: AWS Service → EC2
+3. **Permissions**: Attach `AmazonS3FullAccess`
+4. **Role name**: `EC2-S3-Access-Role`
+
+### Step 2: Attach Role to EC2
+
+1. **EC2 Console → Select Instance → Actions → Security → Modify IAM role**
+2. **Select**: `EC2-S3-Access-Role`
+3. **Update IAM role**
+
+### Step 3: Create S3 Bucket
+
+```bash
+# Create bucket (replace with your unique name)
+aws s3 mb s3://akash-chat-app-bucket-2025
+
+# Set bucket policy (optional for private access)
+aws s3api put-bucket-policy --bucket akash-chat-app-bucket-2025 --policy file://bucket-policy.json
+```
+
+### Step 4: Update Environment Configuration
+
+Add S3 bucket name to your `.env` file:
+```bash
+# Your existing variables
+GEMINI_API_KEY="your_actual_gemini_api_key"
+
+# Add S3 bucket name
+S3_BUCKET_NAME="akash-chat-app-bucket-2025"
+```
+
+### Step 5: Deploy with S3 Support
+
+```bash
+# Rebuild and deploy with S3 support
+docker-compose down
+docker-compose build --no-cache
+docker-compose up -d
+
+# Check logs for S3 connectivity
+docker-compose logs backend
+```
+
+### Step 6: Test S3 Integration
+
+After deployment, test S3 functionality:
+- **S3 Status**: `http://YOUR_EC2_IP:5000/s3/status`
+- **Chat History**: `http://YOUR_EC2_IP:5000/s3/chat-history`
+- **Chat Count**: `http://YOUR_EC2_IP:5000/s3/chat-history/count`
+
+### 🔑 How IAM Roles Work with Docker
+
+The IAM role attached to your EC2 instance automatically provides credentials to:
+- ✅ **EC2 instance** itself
+- ✅ **Docker containers** running on the instance
+- ✅ **Applications** inside the containers
+
+**No need to:**
+- Store AWS access keys in environment variables
+- Configure AWS credentials manually
+- Worry about credential rotation
+
+The `boto3` library automatically discovers and uses the IAM role credentials through the AWS metadata service.
+
+### 📊 S3 Chat History Features
+
+- **Automatic Saving**: Every chat conversation is automatically saved to S3
+- **Organized Storage**: Chats are organized by date (`chat-history/YYYY-MM-DD/timestamp.json`)
+- **History Retrieval**: API endpoint to retrieve recent chat history
+- **Chat Statistics**: Get total count of stored conversations
+- **Error Handling**: App continues to work even if S3 is unavailable
+
 ## 🔧 Configuration Details
 
 ### Environment Variables
@@ -236,6 +313,7 @@ docker-ec2-webapp/
 |----------|-------------|---------|
 | `GEMINI_API_KEY` | Google Gemini AI API key | `AIzaSy...` |
 | `NEXT_PUBLIC_API_URL` | Backend API URL for frontend | `http://65.0.139.226:5000` |
+| `S3_BUCKET_NAME` | S3 bucket for chat history storage | `akash-chat-app-bucket-2025` |
 
 ### Docker Services
 
