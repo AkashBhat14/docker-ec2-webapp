@@ -1,219 +1,51 @@
 #cloud-config
 
-# Robust Cloud-init script for automated Docker EC2 Chat WebApp deployment
-# This script will automatically set up and launch the chat application on EC2 boot
-
-# Set locale and timezone
-locale: en_US.UTF-8
-timezone: UTC
-
-# Update packages first
 package_update: true
-package_upgrade: false  # Skip upgrade to reduce time and potential issues
-
-# Install essential packages
 packages:
   - curl
   - git
-  - unzip
-  - ca-certificates
-  - gnupg
-  - lsb-release
 
-# Write all necessary files
-write_files:
-  - path: /home/ubuntu/.env
-    owner: ubuntu:ubuntu
-    permissions: '0600'
-    content: |
-      # Replace these with your actual values before using
-      GEMINI_API_KEY="your_gemini_api_key_here"
-      S3_BUCKET_NAME="akash-chat-app-bucket-2025"
-
-  - path: /home/ubuntu/install-docker.sh
-    owner: root:root
-    permissions: '0755'
-    content: |
-      #!/bin/bash
-      set -euo pipefail
-      
-      echo "=== Installing Docker ==="
-      
-      # Remove any old Docker installations
-      apt-get remove -y docker docker-engine docker.io containerd runc 2>/dev/null || true
-      
-      # Update package index
-      apt-get update
-      
-      # Install Docker using the convenience script (most reliable method)
-      curl -fsSL https://get.docker.com -o get-docker.sh
-      sh get-docker.sh
-      
-      # Add ubuntu user to docker group
-      usermod -aG docker ubuntu
-      
-      # Start and enable Docker
-      systemctl enable docker
-      systemctl start docker
-      
-      # Install Docker Compose
-      DOCKER_COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep 'tag_name' | cut -d\" -f4)
-      curl -L "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-      chmod +x /usr/local/bin/docker-compose
-      
-      # Verify installations
-      docker --version
-      docker-compose --version
-      
-      echo "=== Docker installation completed ==="
-
-  - path: /home/ubuntu/deploy-app.sh
-    owner: ubuntu:ubuntu
-    permissions: '0755'
-    content: |
-      #!/bin/bash
-      set -euo pipefail
-      
-      # Log everything
-      exec > >(tee -a /home/ubuntu/deployment.log) 2>&1
-      
-      echo "=== Starting Docker EC2 Chat WebApp Deployment ==="
-      echo "Timestamp: $(date)"
-      
-      # Wait for Docker to be ready
-      echo "Waiting for Docker to be ready..."
-      while ! docker info > /dev/null 2>&1; do
-        echo "Docker not ready yet, waiting..."
-        sleep 5
-      done
-      echo "Docker is ready!"
-      
-      # Clone the repository
-      echo "Cloning repository..."
-      cd /home/ubuntu
-      if [ -d "docker-ec2-webapp" ]; then
-        echo "Repository already exists, pulling latest changes..."
-        cd docker-ec2-webapp
-        git pull origin main || echo "Git pull failed, continuing..."
-      else
-        echo "Cloning repository for the first time..."
-        git clone https://github.com/AkashBhat14/docker-ec2-webapp.git
-        cd docker-ec2-webapp
-      fi
-      
-      # Get the public IP of this EC2 instance
-      echo "Getting EC2 public IP..."
-      PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
-      echo "EC2 Public IP: $PUBLIC_IP"
-      
-      # Create environment file
-      echo "Creating environment file..."
-      cp /home/ubuntu/.env .env
-      echo "NEXT_PUBLIC_API_URL=\"http://${PUBLIC_IP}:5000\"" >> .env
-      
-      echo "Environment file contents:"
-      cat .env
-      
-      # Build and start the application
-      echo "Building and starting containers..."
-      docker-compose down --remove-orphans 2>/dev/null || true
-      docker-compose build --no-cache --parallel
-      docker-compose up -d
-      
-      # Wait for services to be ready
-      echo "Waiting for services to start..."
-      sleep 45
-      
-      # Test the deployment
-      echo "Testing deployment..."
-      
-      # Test backend
-      if curl -f -s "http://localhost:5000/" > /dev/null; then
-        echo "✅ Backend is running!"
-        BACKEND_STATUS="✅ Running"
-      else
-        echo "❌ Backend failed to start"
-        BACKEND_STATUS="❌ Failed"
-      fi
-      
-      # Test frontend
-      if curl -f -s "http://localhost:3000/" > /dev/null; then
-        echo "✅ Frontend is running!"
-        FRONTEND_STATUS="✅ Running"
-      else
-        echo "❌ Frontend failed to start"
-        FRONTEND_STATUS="❌ Failed"
-      fi
-      
-      # Test S3 connection
-      if curl -f -s "http://localhost:5000/s3/status" > /dev/null; then
-        echo "✅ S3 integration is working!"
-        S3_STATUS="✅ Connected"
-      else
-        echo "⚠️ S3 integration issue (check IAM role)"
-        S3_STATUS="⚠️ Check IAM role"
-      fi
-      
-      echo "=== Deployment Complete ==="
-      echo "Timestamp: $(date)"
-      echo "Frontend: http://${PUBLIC_IP}:3000 - ${FRONTEND_STATUS}"
-      echo "Backend: http://${PUBLIC_IP}:5000 - ${BACKEND_STATUS}"
-      echo "S3 Status: http://${PUBLIC_IP}:5000/s3/status - ${S3_STATUS}"
-      
-             # Create detailed status file
-       echo "Docker EC2 Chat WebApp Deployment Status" > /home/ubuntu/deployment-status.txt
-       echo "========================================" >> /home/ubuntu/deployment-status.txt
-       echo "Deployment completed at: $(date)" >> /home/ubuntu/deployment-status.txt
-       echo "" >> /home/ubuntu/deployment-status.txt
-       echo "Application URLs:" >> /home/ubuntu/deployment-status.txt
-       echo "- Frontend: http://${PUBLIC_IP}:3000 - ${FRONTEND_STATUS}" >> /home/ubuntu/deployment-status.txt
-       echo "- Backend: http://${PUBLIC_IP}:5000 - ${BACKEND_STATUS}" >> /home/ubuntu/deployment-status.txt
-       echo "- S3 Status: http://${PUBLIC_IP}:5000/s3/status - ${S3_STATUS}" >> /home/ubuntu/deployment-status.txt
-       echo "" >> /home/ubuntu/deployment-status.txt
-       echo "Container Status:" >> /home/ubuntu/deployment-status.txt
-       docker-compose ps >> /home/ubuntu/deployment-status.txt
-       echo "" >> /home/ubuntu/deployment-status.txt
-       echo "Troubleshooting:" >> /home/ubuntu/deployment-status.txt
-       echo "- Full logs: docker-compose logs" >> /home/ubuntu/deployment-status.txt
-       echo "- Restart app: docker-compose restart" >> /home/ubuntu/deployment-status.txt
-       echo "- Rebuild: docker-compose down && docker-compose up --build -d" >> /home/ubuntu/deployment-status.txt
-       echo "- Deployment log: /home/ubuntu/deployment.log" >> /home/ubuntu/deployment-status.txt
-      
-      echo "Status file created: /home/ubuntu/deployment-status.txt"
-
-# Run commands in sequence
 runcmd:
-  # Install Docker first
-  - /home/ubuntu/install-docker.sh
-  
-  # Wait a bit for Docker to fully initialize
-  - sleep 10
-  
-  # Deploy the application as ubuntu user
-  - sudo -u ubuntu /home/ubuntu/deploy-app.sh
+  - |
+    # Install Docker
+    curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+    sh /tmp/get-docker.sh
+    usermod -aG docker ubuntu
+    systemctl enable docker
+    systemctl start docker
+    
+    # Install Docker Compose
+    curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+    chmod +x /usr/local/bin/docker-compose
+    
+    # Wait for Docker
+    sleep 15
+    
+    # Setup as ubuntu user
+    sudo -u ubuntu bash -c '
+    cd /home/ubuntu
+    
+    # Clone repo
+    git clone https://github.com/AkashBhat14/docker-ec2-webapp.git
+    cd docker-ec2-webapp
+    
+    # Get public IP
+    PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
+    
+    # Create env file
+    echo "GEMINI_API_KEY=your_actual_gemini_api_key_here" > .env
+    echo "S3_BUCKET_NAME=akash-chat-app-bucket-2025" >> .env
+    echo "NEXT_PUBLIC_API_URL=http://$PUBLIC_IP:5000" >> .env
+    
+    # Start containers
+    docker-compose up --build -d
+    
+    # Create status
+    echo "Setup complete at $(date)" > /home/ubuntu/SETUP_COMPLETE.txt
+    echo "Frontend: http://$PUBLIC_IP:3000" >> /home/ubuntu/SETUP_COMPLETE.txt
+    echo "Backend: http://$PUBLIC_IP:5000" >> /home/ubuntu/SETUP_COMPLETE.txt
+    '
 
-# Configure logging
-output:
-  all: "| tee -a /var/log/cloud-init-output.log"
-
-# Final message
 final_message: |
-  ===================================================
-  Docker EC2 Chat WebApp Cloud-Init Setup Complete!
-  ===================================================
-  
-  Check deployment status:
-    cat /home/ubuntu/deployment-status.txt
-  
-  View deployment logs:
-    cat /home/ubuntu/deployment.log
-  
-  Check container status:
-    cd /home/ubuntu/docker-ec2-webapp && docker-compose ps
-  
-  Access your application:
-    Frontend: http://YOUR_EC2_IP:3000
-    Backend: http://YOUR_EC2_IP:5000
-  
-  The system finished at $TIMESTAMP
-  =================================================== 
+  Setup should be complete!
+  Check: cat /home/ubuntu/SETUP_COMPLETE.txt 
