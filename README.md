@@ -227,6 +227,97 @@ docker-ec2-webapp/
 └── README.md              # This file
 ```
 
+## 🔐 AWS IAM Role Setup for S3 Access
+
+### Step 1: Create IAM Role
+
+1. **AWS Console → IAM → Roles → Create Role**
+2. **Trusted entity**: AWS Service → EC2
+3. **Permissions**: Attach `AmazonS3FullAccess` or create custom policy:
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "s3:GetObject",
+                "s3:PutObject",
+                "s3:DeleteObject",
+                "s3:ListBucket"
+            ],
+            "Resource": [
+                "arn:aws:s3:::your-bucket-name",
+                "arn:aws:s3:::your-bucket-name/*"
+            ]
+        }
+    ]
+}
+```
+
+4. **Role name**: `EC2-S3-Access-Role`
+
+### Step 2: Attach Role to EC2
+
+1. **EC2 Console → Select Instance → Actions → Security → Modify IAM role**
+2. **Select**: `EC2-S3-Access-Role`
+3. **Update IAM role**
+
+### Step 3: Create S3 Bucket
+
+```bash
+# Create bucket (replace with unique name)
+aws s3 mb s3://your-chat-app-bucket
+
+# Set bucket policy (optional)
+aws s3api put-bucket-policy --bucket your-chat-app-bucket --policy file://bucket-policy.json
+```
+
+### Step 4: Update Environment Configuration
+
+Add S3 bucket name to your `.env` file:
+```bash
+# Your existing variables
+GEMINI_API_KEY="your_actual_gemini_api_key"
+NEXT_PUBLIC_API_URL="http://YOUR_EC2_PUBLIC_IP:5000"
+
+# Add S3 bucket name
+S3_BUCKET_NAME="your-chat-app-bucket"
+```
+
+### Step 5: Deploy with S3 Support
+
+```bash
+# Rebuild and deploy with S3 support
+docker-compose down
+docker-compose build --no-cache
+docker-compose up -d
+
+# Check logs for S3 connectivity
+docker-compose logs backend
+```
+
+### Step 6: Test S3 Access
+
+After deployment, test S3 connectivity:
+- Backend S3 status: `http://YOUR_EC2_IP:5000/s3/status`
+- Chat logs: `http://YOUR_EC2_IP:5000/s3/chat-logs`
+
+### 🔑 How IAM Roles Work with Docker
+
+The IAM role attached to your EC2 instance automatically provides credentials to:
+- ✅ **EC2 instance** itself
+- ✅ **Docker containers** running on the instance
+- ✅ **Applications** inside the containers
+
+**No need to:**
+- Store AWS access keys in environment variables
+- Configure AWS credentials manually
+- Worry about credential rotation
+
+The `boto3` library automatically discovers and uses the IAM role credentials through the AWS metadata service.
+
 ## 🔧 Configuration Details
 
 ### Environment Variables
@@ -235,6 +326,7 @@ docker-ec2-webapp/
 |----------|-------------|---------|
 | `GEMINI_API_KEY` | Google Gemini AI API key | `AIzaSy...` |
 | `NEXT_PUBLIC_API_URL` | Backend API URL for frontend | `http://65.0.139.226:5000` |
+| `S3_BUCKET_NAME` | S3 bucket for storing chat logs | `your-chat-app-bucket` |
 
 ### Docker Services
 
