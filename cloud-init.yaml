@@ -1,0 +1,174 @@
+#cloud-config
+
+# Cloud-init script for automated Docker EC2 Chat WebApp deployment
+# This script will automatically set up and launch the chat application on EC2 boot
+
+# Update packages and install dependencies
+package_update: true
+package_upgrade: true
+
+packages:
+  - docker.io
+  - docker-compose
+  - git
+  - curl
+  - unzip
+
+# Create ubuntu user and add to docker group
+users:
+  - default
+  - name: ubuntu
+    groups: [docker]
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+
+# Write environment file (replace with your actual values)
+write_files:
+  - path: /home/ubuntu/.env
+    owner: ubuntu:ubuntu
+    permissions: '0600'
+    content: |
+      # Replace these with your actual values
+      GEMINI_API_KEY="your_gemini_api_key_here"
+      S3_BUCKET_NAME="akash-chat-app-bucket-2025"
+
+  - path: /home/ubuntu/setup-app.sh
+    owner: ubuntu:ubuntu
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -e
+      
+      echo "=== Starting Docker EC2 Chat WebApp Setup ==="
+      
+      # Wait for docker to be ready
+      echo "Waiting for Docker to start..."
+      while ! docker info > /dev/null 2>&1; do
+        sleep 2
+      done
+      
+      # Clone the repository
+      echo "Cloning repository..."
+      cd /home/ubuntu
+      if [ ! -d "docker-ec2-webapp" ]; then
+        git clone https://github.com/AkashBhat14/docker-ec2-webapp.git
+      fi
+      
+      cd docker-ec2-webapp
+      
+      # Get the public IP of this EC2 instance
+      echo "Getting EC2 public IP..."
+      PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
+      echo "EC2 Public IP: $PUBLIC_IP"
+      
+      # Update the API URL in the environment file
+      echo "Updating environment configuration..."
+      echo "NEXT_PUBLIC_API_URL=\"http://${PUBLIC_IP}:5000\"" >> /home/ubuntu/.env
+      
+      # Copy environment file to project directory
+      cp /home/ubuntu/.env .
+      
+      # Start the application
+      echo "Building and starting containers..."
+      docker-compose down --remove-orphans 2>/dev/null || true
+      docker-compose build --no-cache
+      docker-compose up -d
+      
+      # Wait for services to be ready
+      echo "Waiting for services to start..."
+      sleep 30
+      
+      # Test the deployment
+      echo "Testing deployment..."
+      if curl -f -s "http://localhost:5000/" > /dev/null; then
+        echo "✅ Backend is running!"
+      else
+        echo "❌ Backend failed to start"
+      fi
+      
+      if curl -f -s "http://localhost:3000/" > /dev/null; then
+        echo "✅ Frontend is running!"
+      else
+        echo "❌ Frontend failed to start"
+      fi
+      
+      echo "=== Setup Complete ==="
+      echo "Frontend: http://${PUBLIC_IP}:3000"
+      echo "Backend: http://${PUBLIC_IP}:5000"
+      echo "S3 Status: http://${PUBLIC_IP}:5000/s3/status"
+      
+      # Create a status file
+      echo "Deployment completed at $(date)" > /home/ubuntu/deployment-status.txt
+      echo "Frontend: http://${PUBLIC_IP}:3000" >> /home/ubuntu/deployment-status.txt
+      echo "Backend: http://${PUBLIC_IP}:5000" >> /home/ubuntu/deployment-status.txt
+
+  - path: /etc/systemd/system/docker-chat-app.service
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=Docker Chat Application
+      Requires=docker.service
+      After=docker.service
+      
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      User=ubuntu
+      WorkingDirectory=/home/ubuntu/docker-ec2-webapp
+      ExecStart=/home/ubuntu/setup-app.sh
+      StandardOutput=journal
+      StandardError=journal
+      
+      [Install]
+      WantedBy=multi-user.target
+
+# Run commands to set up services
+runcmd:
+  # Enable and start Docker
+  - systemctl enable docker
+  - systemctl start docker
+  
+  # Add ubuntu user to docker group (backup)
+  - usermod -aG docker ubuntu
+  
+  # Set up log rotation for Docker
+  - |
+    cat > /etc/docker/daemon.json << EOF
+    {
+      "log-driver": "json-file",
+      "log-opts": {
+        "max-size": "10m",
+        "max-file": "3"
+      }
+    }
+    EOF
+  
+  # Restart Docker with new config
+  - systemctl restart docker
+  
+  # Install Docker Compose (latest version)
+  - curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+  - chmod +x /usr/local/bin/docker-compose
+  
+  # Enable the application service
+  - systemctl enable docker-chat-app.service
+  
+  # Wait a bit for Docker to stabilize, then start the app
+  - sleep 10
+  - systemctl start docker-chat-app.service
+
+# Set timezone
+timezone: UTC
+
+# Configure logging
+output:
+  all: "| tee -a /var/log/cloud-init-output.log"
+
+# Final message
+final_message: |
+  Docker EC2 Chat WebApp deployment completed!
+  
+  Check deployment status: cat /home/ubuntu/deployment-status.txt
+  View application logs: docker-compose -f /home/ubuntu/docker-ec2-webapp/docker-compose.yml logs
+  
+  The system finished initializing at $TIMESTAMP 

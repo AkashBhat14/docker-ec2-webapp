@@ -51,6 +51,63 @@ Access the application:
 
 ## 🌩️ AWS EC2 Deployment
 
+### 🚀 Option A: Automated Deployment with Cloud-Init (Recommended)
+
+Use the provided `cloud-init.yaml` script to automatically set up everything on EC2 boot.
+
+#### Step 1: Prepare Cloud-Init Script
+
+1. **Edit the cloud-init.yaml file**:
+   ```bash
+   # Replace these values in cloud-init.yaml
+   GEMINI_API_KEY="your_actual_gemini_api_key"
+   S3_BUCKET_NAME="akash-chat-app-bucket-2025"
+   ```
+
+#### Step 2: Launch EC2 Instance with Cloud-Init
+
+1. **AWS Console → EC2 → Launch Instance**
+2. **AMI**: Ubuntu 22.04 LTS
+3. **Instance type**: t2.micro (free tier)
+4. **Storage**: 20GB (recommended)
+5. **Security Group**: Allow ports 22, 3000, 5000
+6. **Advanced Details → User data**: Copy and paste the entire `cloud-init.yaml` content
+7. **IAM Instance Profile**: Attach your `EC2-S3-Access-Role`
+
+#### Step 3: Wait for Automatic Setup
+
+The instance will automatically:
+- ✅ Install Docker and Docker Compose
+- ✅ Clone your repository
+- ✅ Configure environment variables
+- ✅ Build and start containers
+- ✅ Auto-detect its public IP
+
+**Setup takes ~5-10 minutes**. Monitor progress:
+
+```bash
+# SSH into instance after launch
+ssh -i your-key.pem ubuntu@your-new-ec2-ip
+
+# Check cloud-init progress
+sudo tail -f /var/log/cloud-init-output.log
+
+# Check deployment status
+cat /home/ubuntu/deployment-status.txt
+
+# Check container status
+cd docker-ec2-webapp && docker-compose ps
+```
+
+#### Step 4: Access Your Application
+
+Your app will be automatically available at:
+- **Frontend**: `http://YOUR_NEW_EC2_IP:3000`
+- **Backend**: `http://YOUR_NEW_EC2_IP:5000`
+- **S3 Status**: `http://YOUR_NEW_EC2_IP:5000/s3/status`
+
+### 🔧 Option B: Manual Deployment
+
 ### Step 1: Launch EC2 Instance
 
 1. **Create EC2 Instance**:
@@ -222,6 +279,7 @@ docker-ec2-webapp/
 │   │       └── page.tsx    # Main chat interface
 │   ├── Dockerfile          # Frontend container config
 │   └── package.json        # Node.js dependencies
+├── cloud-init.yaml         # Automated EC2 deployment script
 ├── docker-compose.yml      # Container orchestration
 ├── .env                    # Environment variables
 └── README.md              # This file
