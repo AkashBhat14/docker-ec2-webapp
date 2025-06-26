@@ -227,6 +227,7 @@ docker-ec2-webapp/
 └── README.md              # This file
 ```
 
+
 ## 🔧 Configuration Details
 
 ### Environment Variables
