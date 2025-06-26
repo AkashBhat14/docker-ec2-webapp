@@ -160,29 +160,24 @@ write_files:
       echo "Backend: http://${PUBLIC_IP}:5000 - ${BACKEND_STATUS}"
       echo "S3 Status: http://${PUBLIC_IP}:5000/s3/status - ${S3_STATUS}"
       
-      # Create detailed status file
-      cat > /home/ubuntu/deployment-status.txt << EOF
-Docker EC2 Chat WebApp Deployment Status
-========================================
-Deployment completed at: $(date)
-
-Application URLs:
-- Frontend: http://${PUBLIC_IP}:3000 - ${FRONTEND_STATUS}
-- Backend: http://${PUBLIC_IP}:5000 - ${BACKEND_STATUS}
-- S3 Status: http://${PUBLIC_IP}:5000/s3/status - ${S3_STATUS}
-
-Container Status:
-$(docker-compose ps)
-
-Recent Logs:
-$(docker-compose logs --tail=20)
-
-Troubleshooting:
-- Full logs: docker-compose logs
-- Restart app: docker-compose restart
-- Rebuild: docker-compose down && docker-compose up --build -d
-- Deployment log: /home/ubuntu/deployment.log
-EOF
+             # Create detailed status file
+       echo "Docker EC2 Chat WebApp Deployment Status" > /home/ubuntu/deployment-status.txt
+       echo "========================================" >> /home/ubuntu/deployment-status.txt
+       echo "Deployment completed at: $(date)" >> /home/ubuntu/deployment-status.txt
+       echo "" >> /home/ubuntu/deployment-status.txt
+       echo "Application URLs:" >> /home/ubuntu/deployment-status.txt
+       echo "- Frontend: http://${PUBLIC_IP}:3000 - ${FRONTEND_STATUS}" >> /home/ubuntu/deployment-status.txt
+       echo "- Backend: http://${PUBLIC_IP}:5000 - ${BACKEND_STATUS}" >> /home/ubuntu/deployment-status.txt
+       echo "- S3 Status: http://${PUBLIC_IP}:5000/s3/status - ${S3_STATUS}" >> /home/ubuntu/deployment-status.txt
+       echo "" >> /home/ubuntu/deployment-status.txt
+       echo "Container Status:" >> /home/ubuntu/deployment-status.txt
+       docker-compose ps >> /home/ubuntu/deployment-status.txt
+       echo "" >> /home/ubuntu/deployment-status.txt
+       echo "Troubleshooting:" >> /home/ubuntu/deployment-status.txt
+       echo "- Full logs: docker-compose logs" >> /home/ubuntu/deployment-status.txt
+       echo "- Restart app: docker-compose restart" >> /home/ubuntu/deployment-status.txt
+       echo "- Rebuild: docker-compose down && docker-compose up --build -d" >> /home/ubuntu/deployment-status.txt
+       echo "- Deployment log: /home/ubuntu/deployment.log" >> /home/ubuntu/deployment-status.txt
       
       echo "Status file created: /home/ubuntu/deployment-status.txt"
 
