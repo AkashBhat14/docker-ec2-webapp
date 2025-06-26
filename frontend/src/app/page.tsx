@@ -55,7 +55,7 @@ export default function ChatPage() {
     setError(null);
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
+      const apiUrl = "http://65.0.139.226:5000";
       const response = await fetch(`${apiUrl}/chat`, {
         method: "POST",
         headers: {
