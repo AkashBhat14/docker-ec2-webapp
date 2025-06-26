@@ -232,28 +232,7 @@ docker-ec2-webapp/
 
 1. **AWS Console → IAM → Roles → Create Role**
 2. **Trusted entity**: AWS Service → EC2
-3. **Permissions**: Attach `AmazonS3FullAccess` or create custom policy:
-
-```json
-{
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Effect": "Allow",
-            "Action": [
-                "s3:GetObject",
-                "s3:PutObject",
-                "s3:DeleteObject",
-                "s3:ListBucket"
-            ],
-            "Resource": [
-                "arn:aws:s3:::your-bucket-name",
-                "arn:aws:s3:::your-bucket-name/*"
-            ]
-        }
-    ]
-}
-```
+3. **Permissions**: Attach `AmazonS3FullAccess`
 
 4. **Role name**: `EC2-S3-Access-Role`
 
