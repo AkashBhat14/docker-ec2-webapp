@@ -56,7 +56,6 @@ Access the application:
 1. **Create EC2 Instance**:
    - Instance type: `t2.micro` (free tier)
    - AMI: Ubuntu 22.04 LTS
-   - Storage: 20GB (recommended, 8GB minimum)
    - Security Group: Allow ports 22, 3000, 5000
 
 2. **Security Group Configuration**:
