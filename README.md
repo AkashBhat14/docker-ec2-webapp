@@ -51,62 +51,200 @@ Access the application:
 
 ## 🌩️ AWS EC2 Deployment
 
-### 🚀 Option A: Automated Deployment with Cloud-Init (Recommended)
+### 🔑 Prerequisites: IAM Role Setup (Required for S3 Features)
+
+Before deploying, create an IAM role for your EC2 instance to access S3:
+
+#### Step 1: Create S3 Bucket
+
+1. **AWS Console → S3 → Create bucket**
+2. **Bucket name**: `akash-chat-app-bucket-2025` (or your chosen name)
+3. **Region**: Choose same region as your EC2 instance
+4. **Keep default settings** for permissions and configuration
+5. **Create bucket**
+
+#### Step 2: Create IAM Policy
+
+1. **AWS Console → IAM → Policies → Create Policy**
+2. **Select "JSON" tab** and paste this policy:
+   ```json
+   {
+       "Version": "2012-10-17",
+       "Statement": [
+           {
+               "Effect": "Allow",
+               "Action": [
+                   "s3:GetObject",
+                   "s3:PutObject",
+                   "s3:ListBucket"
+               ],
+               "Resource": [
+                   "arn:aws:s3:::akash-chat-app-bucket-2025",
+                   "arn:aws:s3:::akash-chat-app-bucket-2025/*"
+               ]
+           }
+       ]
+   }
+   ```
+3. **Name**: `EC2-S3-ChatApp-Policy`
+4. **Create policy**
+
+#### Step 3: Create IAM Role
+
+1. **AWS Console → IAM → Roles → Create Role**
+2. **Trusted entity**: AWS service
+3. **Use case**: EC2
+4. **Permissions**: Search and select `EC2-S3-ChatApp-Policy`
+5. **Role name**: `EC2-S3-Access-Role`
+6. **Create role**
+
+#### Step 4: Attach Role to EC2 (During Launch)
+
+When launching your EC2 instance:
+- **IAM Instance Profile**: Select `EC2-S3-Access-Role`
+
+Or for existing instances:
+1. **EC2 Console → Instances → Select your instance**
+2. **Actions → Security → Modify IAM role**
+3. **Select**: `EC2-S3-Access-Role`
+4. **Update IAM role**
+
+> **Note**: Without this IAM role, S3 features will be disabled but the chat app will still work locally.
+
+---
+
+Choose from three deployment methods based on your preference:
+
+### 🚀 Option A: Automated Deployment with Cloud-Init (Fastest)
+
+**Perfect for:** One-click deployment, production environments, consistent setups
 
 Use the provided `cloud-init.yaml` script to automatically set up everything on EC2 boot.
 
-#### Step 1: Prepare Cloud-Init Script
+#### Step 1: Prepare Your Environment
 
-1. **Edit the cloud-init.yaml file**:
-   ```bash
-   # Replace these values in cloud-init.yaml
-   GEMINI_API_KEY="your_actual_gemini_api_key"
-   S3_BUCKET_NAME="akash-chat-app-bucket-2025"
+1. **Get your Gemini API key** from [Google AI Studio](https://aistudio.google.com/)
+2. **Note your S3 bucket name**: `akash-chat-app-bucket-2025`
+3. **Edit the cloud-init.yaml file** before launching:
+   ```yaml
+   # In cloud-init.yaml, replace this line:
+   echo "GEMINI_API_KEY=your_actual_gemini_api_key_here" > .env
+   # With your actual API key:
+   echo "GEMINI_API_KEY=AIzaSy..." > .env
    ```
 
 #### Step 2: Launch EC2 Instance with Cloud-Init
 
 1. **AWS Console → EC2 → Launch Instance**
-2. **AMI**: Ubuntu 22.04 LTS
-3. **Instance type**: t2.micro (free tier)
-4. **Storage**: 20GB (recommended)
-5. **Security Group**: Allow ports 22, 3000, 5000
-6. **Advanced Details → User data**: Copy and paste the entire `cloud-init.yaml` content
-7. **IAM Instance Profile**: Attach your `EC2-S3-Access-Role`
+2. **AMI**: Ubuntu 24.04 LTS (recommended) or 22.04 LTS
+3. **Instance type**: t2.micro (free tier) or larger
+4. **Storage**: 20GB (recommended, 8GB minimum)
+5. **Security Group**: Create or select group with these rules:
+   ```
+   Type: SSH, Port: 22, Source: Your IP (for SSH access)
+   Type: Custom TCP, Port: 3000, Source: 0.0.0.0/0 (for frontend)
+   Type: Custom TCP, Port: 5000, Source: 0.0.0.0/0 (for backend API)
+   ```
+6. **IAM Instance Profile**: Attach your `EC2-S3-Access-Role` (see IAM setup below)
+7. **Advanced Details → User data**: Copy and paste the entire `cloud-init.yaml` content
 
-#### Step 3: Wait for Automatic Setup
+#### Step 3: Wait for Automatic Setup (8-10 minutes)
 
 The instance will automatically:
 - ✅ Install Docker and Docker Compose
 - ✅ Clone your repository
+- ✅ Auto-detect EC2 public IP
 - ✅ Configure environment variables
 - ✅ Build and start containers
-- ✅ Auto-detect its public IP
+- ✅ Test all services
 
-**Setup takes ~5-10 minutes**. Monitor progress:
-
+**Monitor progress:**
 ```bash
-# SSH into instance after launch
+# SSH into instance after ~2 minutes
 ssh -i your-key.pem ubuntu@your-new-ec2-ip
 
-# Check cloud-init progress
-sudo tail -f /var/log/cloud-init-output.log
+# Check cloud-init status
+sudo cloud-init status
 
-# Check deployment status
-cat /home/ubuntu/deployment-status.txt
+# Check if setup completed successfully
+cat /home/ubuntu/SETUP_COMPLETE.txt
 
-# Check container status
-cd docker-ec2-webapp && docker-compose ps
+# If file exists, your app is ready!
 ```
 
 #### Step 4: Access Your Application
 
 Your app will be automatically available at:
-- **Frontend**: `http://YOUR_NEW_EC2_IP:3000`
-- **Backend**: `http://YOUR_NEW_EC2_IP:5000`
-- **S3 Status**: `http://YOUR_NEW_EC2_IP:5000/s3/status`
+- **Frontend**: `http://YOUR_EC2_PUBLIC_IP:3000`
+- **Backend**: `http://YOUR_EC2_PUBLIC_IP:5000`
+- **S3 Status**: `http://YOUR_EC2_PUBLIC_IP:5000/s3/status`
 
-### 🔧 Option B: Manual Deployment
+### 🛠️ Option B: Semi-Automated with Deploy Script (Most Flexible)
+
+**Perfect for:** Development, learning, debugging, custom configurations
+
+Use the `deploy.sh` script for step-by-step deployment with interactive options.
+
+#### Step 1: Launch Basic EC2 Instance
+
+1. **AWS Console → EC2 → Launch Instance**
+2. **AMI**: Ubuntu 24.04 LTS
+3. **Instance type**: t2.micro or larger
+4. **Storage**: 20GB recommended
+5. **Security Group**: Allow ports 22, 3000, 5000 (same as above)
+6. **IAM Instance Profile**: Attach `EC2-S3-Access-Role` (optional for S3 features)
+
+#### Step 2: Run Deploy Script
+
+```bash
+# SSH into your instance
+ssh -i your-key.pem ubuntu@your-ec2-ip
+
+# Method 1: Direct download and run
+curl -o deploy.sh https://raw.githubusercontent.com/AkashBhat14/docker-ec2-webapp/main/deploy.sh
+chmod +x deploy.sh
+./deploy.sh
+
+# Method 2: Clone repository first
+git clone https://github.com/AkashBhat14/docker-ec2-webapp.git
+cd docker-ec2-webapp
+chmod +x deploy.sh
+./deploy.sh
+```
+
+#### Step 3: Interactive Setup
+
+The script will:
+- ✅ Install all dependencies with progress tracking
+- ✅ Prompt you to enter your Gemini API key
+- ✅ Auto-detect your EC2 public IP
+- ✅ Build and test all services
+- ✅ Create a detailed deployment summary
+
+**Expected output:**
+```bash
+==========================================
+Docker EC2 Chat WebApp Deployment Script
+==========================================
+
+[INFO] Installing Docker...
+[SUCCESS] Docker installed successfully
+[INFO] Getting EC2 public IP...
+[SUCCESS] Public IP detected: 65.0.139.226
+
+Do you want to edit the Gemini API key now? (y/n): y
+Enter your Gemini API key: AIzaSy...
+[SUCCESS] API key updated in environment file
+
+[INFO] Building and starting Docker containers...
+[SUCCESS] ✅ Backend is running
+[SUCCESS] ✅ Frontend is running
+[SUCCESS] 🎉 DEPLOYMENT COMPLETE!
+
+Your app is running at: http://65.0.139.226:3000
+```
+
+### 🔧 Option C: Manual Deployment
 
 ### Step 1: Launch EC2 Instance
 
@@ -303,40 +441,202 @@ docker-ec2-webapp/
 
 ### Step 3: Create S3 Bucket
 
+1. **AWS Console → S3 → Create bucket**
+2. **Bucket name**: `akash-chat-app-bucket-2025` (or your chosen name)
+3. **Region**: Choose same region as your EC2 instance
+4. **Keep default settings** for permissions and configuration
+5. **Create bucket**
+
+Or via CLI:
 ```bash
 # Create bucket (replace with your unique name)
 aws s3 mb s3://akash-chat-app-bucket-2025
-
-# Set bucket policy (optional for private access)
-aws s3api put-bucket-policy --bucket akash-chat-app-bucket-2025 --policy file://bucket-policy.json
 ```
 
-### Step 4: Update Environment Configuration
+---
 
-Add S3 bucket name to your `.env` file:
-```bash
-# Your existing variables
-GEMINI_API_KEY="your_actual_gemini_api_key"
+## 🔄 Redeployment
 
-# Add S3 bucket name
-S3_BUCKET_NAME="akash-chat-app-bucket-2025"
-```
-
-### Step 5: Deploy with S3 Support
+To redeploy with new code:
 
 ```bash
-# Rebuild and deploy with S3 support
+# On your EC2 instance
+cd docker-ec2-webapp
+git pull origin main
 docker-compose down
-docker-compose build --no-cache
-docker-compose up -d
-
-# Check logs for S3 connectivity
-docker-compose logs backend
+docker-compose up --build -d
 ```
 
-### Step 6: Test S3 Integration
+## 🛠️ Deployment Troubleshooting
 
-After deployment, test S3 functionality:
+### Cloud-Init Deployment Issues
+
+**Problem**: Cloud-init fails or doesn't complete setup
+```bash
+# Check cloud-init status
+sudo cloud-init status
+
+# View detailed logs
+sudo journalctl -u cloud-init-local.service
+sudo tail -f /var/log/cloud-init-output.log
+
+# If status shows "error", check for errors:
+grep -i error /var/log/cloud-init-output.log
+```
+
+**Common fixes:**
+- Ensure your Gemini API key is correctly formatted in `cloud-init.yaml`
+- Check that IAM role is properly attached to EC2 instance
+- Verify security group allows ports 3000 and 5000
+- Wait at least 10 minutes for full setup completion
+
+### Deploy Script Issues
+
+**Problem**: Script fails during Docker installation
+```bash
+# Run script with debug mode
+bash -x deploy.sh
+
+# Or check if Docker group needs manual setup
+sudo usermod -aG docker $USER
+newgrp docker
+```
+
+**Problem**: Script hangs on "Waiting for Docker to be ready"
+```bash
+# The script has a 60-second timeout, but you can force continue
+# Press Ctrl+C and run:
+sudo systemctl restart docker
+sleep 5
+./deploy.sh  # Run again
+```
+
+**Problem**: Can't access application after deployment
+```bash
+# Check if containers are running
+docker-compose ps
+
+# Check container logs
+docker-compose logs frontend
+docker-compose logs backend
+
+# Verify your EC2 security group allows inbound traffic on ports 3000 and 5000
+```
+
+### S3 Integration Issues
+
+**Problem**: S3 status shows "Access Denied"
+- Verify IAM role `EC2-S3-Access-Role` is attached to EC2 instance
+- Check S3 bucket name matches exactly in environment variables
+- Ensure IAM policy includes correct bucket ARN
+
+**Problem**: S3 status shows "Not Found"
+- Verify S3 bucket exists and is in correct region
+- Check bucket name spelling in environment variables
+- Create bucket if it doesn't exist
+
+### General Application Issues
+
+**Problem**: Frontend can't connect to backend
+```bash
+# Test backend directly
+curl http://your-ec2-ip:5000/health
+
+# Check environment variables
+docker exec chat-frontend env | grep NEXT_PUBLIC_API_URL
+
+# Should show: NEXT_PUBLIC_API_URL=http://YOUR_EC2_IP:5000
+```
+
+**Problem**: Application runs locally but not on EC2
+- Check EC2 security group rules (ports 22, 3000, 5000 must be open)
+- Verify public IP address is used in frontend configuration
+- Ensure Docker containers have proper networking
+
+**Problem**: Chat messages not saving to S3
+```bash
+# Check S3 status endpoint
+curl http://your-ec2-ip:5000/s3/status
+
+# Test all S3 endpoints
+curl http://your-ec2-ip:5000/s3/chat-history
+curl http://your-ec2-ip:5000/s3/chat-history/count
+
+# Check if IAM role allows S3 access
+aws sts get-caller-identity  # Should show role info
+
+# Check backend logs for S3 errors
+docker-compose logs backend | grep -i s3
+```
+
+### Performance Issues
+
+**Problem**: Slow response times
+- Consider upgrading from t2.micro to t2.small or larger
+- Monitor CPU and memory usage: `htop`
+- Check container resources: `docker stats`
+
+### Getting Help
+
+If you encounter issues:
+1. Check the troubleshooting steps above
+2. Review container logs: `docker-compose logs`
+3. Verify all environment variables are set correctly
+4. Ensure IAM roles and security groups are properly configured
+5. Check AWS CloudWatch logs for EC2 instance issues
+
+---
+
+## 📊 S3 Chat History Features
+
+- **Automatic Saving**: Every chat conversation is automatically saved to S3
+- **Organized Storage**: Chats are organized by date (`chat-history/YYYY-MM-DD/timestamp.json`)
+- **History Retrieval**: API endpoint to retrieve recent chat history
+- **Chat Statistics**: Get total count of stored conversations
+- **Error Handling**: App continues to work even if S3 is unavailable
+
+### Testing S3 Integration
+
+After deployment, test S3 functionality with these commands:
+
+#### S3 Status Check
+```bash
+# Check S3 connection status
+curl http://YOUR_EC2_IP:5000/s3/status
+
+# Expected responses:
+# Success: {"status": "connected", "bucket": "akash-chat-app-bucket-2025"}
+# No IAM Role: {"status": "no_credentials", "message": "No AWS credentials found"}
+# Wrong Bucket: {"status": "access_denied", "message": "Access denied to bucket"}
+```
+
+#### Chat History Retrieval
+```bash
+# Get recent chat conversations (last 10)
+curl http://YOUR_EC2_IP:5000/s3/chat-history
+
+# Expected response (if conversations exist):
+# [
+#   {
+#     "timestamp": "2025-01-20T10:30:00Z",
+#     "user_message": "Hello",
+#     "ai_response": "Hi there! How can I help you today?",
+#     "conversation_id": "conv_123"
+#   }
+# ]
+```
+
+#### Chat History Count
+```bash
+# Get total number of stored conversations
+curl http://YOUR_EC2_IP:5000/s3/chat-history/count
+
+# Expected response:
+# {"total_conversations": 25, "bucket": "akash-chat-app-bucket-2025"}
+```
+
+#### Web Browser Testing
+You can also test these endpoints directly in your browser:
 - **S3 Status**: `http://YOUR_EC2_IP:5000/s3/status`
 - **Chat History**: `http://YOUR_EC2_IP:5000/s3/chat-history`
 - **Chat Count**: `http://YOUR_EC2_IP:5000/s3/chat-history/count`
@@ -355,37 +655,56 @@ The IAM role attached to your EC2 instance automatically provides credentials to
 
 The `boto3` library automatically discovers and uses the IAM role credentials through the AWS metadata service.
 
-### 📊 S3 Chat History Features
-
-- **Automatic Saving**: Every chat conversation is automatically saved to S3
-- **Organized Storage**: Chats are organized by date (`chat-history/YYYY-MM-DD/timestamp.json`)
-- **History Retrieval**: API endpoint to retrieve recent chat history
-- **Chat Statistics**: Get total count of stored conversations
-- **Error Handling**: App continues to work even if S3 is unavailable
-
-## 🔧 Configuration Details
+## 🔧 Configuration Reference
 
 ### Environment Variables
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `GEMINI_API_KEY` | Google Gemini AI API key | `AIzaSy...` |
-| `NEXT_PUBLIC_API_URL` | Backend API URL for frontend | `http://65.0.139.226:5000` |
-| `S3_BUCKET_NAME` | S3 bucket for chat history storage | `akash-chat-app-bucket-2025` |
+| Variable | Description | Example | Required |
+|----------|-------------|---------|----------|
+| `GEMINI_API_KEY` | Google Gemini AI API key | `AIzaSy...` | ✅ Yes |
+| `NEXT_PUBLIC_API_URL` | Backend API URL for frontend | `http://65.0.139.226:5000` | ✅ Yes |
+| `S3_BUCKET_NAME` | S3 bucket for chat history storage | `akash-chat-app-bucket-2025` | ⚠️ Optional |
 
 ### Docker Services
 
-| Service | Port | Description |
-|---------|------|-------------|
-| `frontend` | 3000 | Next.js chat interface |
-| `backend` | 5000 | FastAPI server with Gemini AI |
+| Service | Port | Description | Health Check |
+|---------|------|-------------|--------------|
+| `frontend` | 3000 | Next.js chat interface | `http://ip:3000` |
+| `backend` | 5000 | FastAPI server with Gemini AI | `http://ip:5000/health` |
 
-## 🔐 Security Considerations
+### API Endpoints
+
+| Endpoint | Method | Description | Response Example |
+|----------|--------|-------------|------------------|
+| `/health` | GET | Backend health check | `{"status": "healthy"}` |
+| `/chat` | POST | Send message to AI | `{"response": "AI response text"}` |
+| `/s3/status` | GET | S3 connection status | `{"status": "connected", "bucket": "bucket-name"}` |
+| `/s3/chat-history` | GET | Retrieve recent chat history (last 10) | `[{"timestamp": "...", "user_message": "...", "ai_response": "..."}]` |
+| `/s3/chat-history/count` | GET | Get total conversation count | `{"total_conversations": 25, "bucket": "bucket-name"}` |
+
+#### S3 Endpoint Details
+
+**`/s3/status`** - Check S3 connectivity and permissions
+- ✅ Connected: `{"status": "connected", "bucket": "your-bucket-name"}`
+- ❌ No credentials: `{"status": "no_credentials", "message": "No AWS credentials found"}`
+- ❌ Access denied: `{"status": "access_denied", "message": "Access denied to bucket"}`
+
+**`/s3/chat-history`** - Retrieve recent conversations
+- Returns last 10 chat conversations in reverse chronological order
+- Each conversation includes timestamp, user message, AI response, and conversation ID
+- Returns empty array `[]` if no conversations exist
+
+**`/s3/chat-history/count`** - Get conversation statistics  
+- Returns total number of stored conversations across all dates
+- Includes bucket name for verification
+
+## 🔐 Security Best Practices
 
 - **API Keys**: Keep your Gemini API key secure and never commit it to version control
 - **Firewall**: Consider restricting port access to specific IPs in production
-- **HTTPS**: For production, set up SSL/TLS certificates
+- **HTTPS**: For production, set up SSL/TLS certificates and reverse proxy
 - **Updates**: Regularly update dependencies and base images
+- **IAM**: Use minimal permissions in IAM policies (only required S3 actions)
 
 ## 📝 License
 
@@ -394,15 +713,16 @@ This project is open source and available under the MIT License.
 ## 🤝 Contributing
 
 1. Fork the repository
-2. Create a feature branch
+2. Create a feature branch  
 3. Commit your changes
 4. Push to the branch
 5. Create a Pull Request
 
 ## 📞 Support
 
-If you encounter issues:
+For questions or issues:
 1. Check the troubleshooting section above
 2. Review container logs: `docker-compose logs -f`
 3. Verify your environment configuration
 4. Ensure all prerequisites are met
+5. Create an issue on GitHub with detailed error information
