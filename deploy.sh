@@ -53,6 +53,9 @@ sudo apt install -y curl git
 print_status "Installing Docker..."
 if command -v docker &> /dev/null; then
     print_warning "Docker is already installed"
+    # Make sure Docker service is running
+    sudo systemctl enable docker
+    sudo systemctl start docker
 else
     curl -fsSL https://get.docker.com -o get-docker.sh
     sudo sh get-docker.sh
@@ -85,11 +88,39 @@ fi
 
 # Wait for Docker to be ready
 print_status "Waiting for Docker to be ready..."
-sleep 5
+sudo systemctl start docker
+sleep 10
+
+# Check Docker with timeout
+DOCKER_TIMEOUT=60  # 60 seconds timeout
+DOCKER_COUNTER=0
+
+print_status "Checking Docker status..."
 while ! docker info > /dev/null 2>&1; do
-    print_status "Docker not ready yet, waiting..."
-    sleep 3
+    if [ $DOCKER_COUNTER -ge $DOCKER_TIMEOUT ]; then
+        print_error "Docker failed to start within $DOCKER_TIMEOUT seconds"
+        print_error "Trying to fix Docker group permission issue..."
+        
+        # Try to fix group membership issue
+        print_status "Applying group changes with newgrp..."
+        if newgrp docker <<< 'docker info > /dev/null 2>&1'; then
+            print_success "Docker is now accessible!"
+            break
+        else
+            print_error "Docker group fix failed. Manual intervention required:"
+            print_error "1. Check Docker service: sudo systemctl status docker"
+            print_error "2. Restart Docker: sudo systemctl restart docker"
+            print_error "3. Check logs: sudo journalctl -u docker -n 20"
+            print_error "4. Try: newgrp docker"
+            exit 1
+        fi
+    fi
+    
+    print_status "Docker not ready yet, waiting... (${DOCKER_COUNTER}s/${DOCKER_TIMEOUT}s)"
+    sleep 5
+    DOCKER_COUNTER=$((DOCKER_COUNTER + 5))
 done
+
 print_success "Docker is ready!"
 
 # Clone repository
@@ -150,13 +181,21 @@ fi
 print_status "Building and starting Docker containers..."
 print_status "This may take several minutes..."
 
+# Try to run docker-compose, if it fails due to permissions, try with newgrp
 if docker-compose up --build -d; then
     print_success "Containers started successfully"
 else
-    print_error "Failed to start containers"
-    print_error "Try running: newgrp docker"
-    print_error "Then run this script again"
-    exit 1
+    print_warning "Docker compose failed, trying with newgrp docker..."
+    if newgrp docker <<< 'docker-compose up --build -d'; then
+        print_success "Containers started successfully with newgrp"
+    else
+        print_error "Failed to start containers even with newgrp"
+        print_error "Manual steps to fix:"
+        print_error "1. Log out and log back in"
+        print_error "2. Or run: newgrp docker"
+        print_error "3. Then run: docker-compose up --build -d"
+        exit 1
+    fi
 fi
 
 # Wait for services to start
